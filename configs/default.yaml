@@ -1,0 +1,27 @@
+server:
+  host: localhost
+  port: 8080
+  mode: development
+
+jira:
+  timeout: 30
+  retries: 3
+  auth:
+    type: api_token
+
+features:
+  natural_language: false
+  caching: true
+  auto_retry: true
+
+logging:
+  level: info
+  format: json
+  output: stdout
+
+security:
+  rate_limit: 100
+  enable_cors: true
+  allowed_origins:
+    - "http://localhost:*"
+    - "https://localhost:*"

@@ -1,0 +1,53 @@
+# Example GoJira Configuration
+# Copy this file to gojira.yaml and modify as needed
+
+server:
+  host: localhost
+  port: 8080
+  mode: development  # development, production, test
+
+jira:
+  # Single instance configuration
+  url: https://your-domain.atlassian.net
+  timeout: 30
+  retries: 3
+  auth:
+    type: api_token
+    email: your-email@example.com
+    token: ${JIRA_API_TOKEN}  # Use environment variable
+
+  # Multiple instance configuration (alternative)
+  # instances:
+  #   - name: production
+  #     url: https://prod.atlassian.net
+  #     auth:
+  #       type: oauth2
+  #       client_id: ${PROD_CLIENT_ID}
+  #       client_secret: ${PROD_CLIENT_SECRET}
+  #       redirect_url: http://localhost:8080/auth/callback
+  #   - name: staging
+  #     url: https://staging.atlassian.net
+  #     auth:
+  #       type: api_token
+  #       email: staging@example.com
+  #       token: ${STAGING_TOKEN}
+
+features:
+  natural_language: true   # Enable Claude Code natural language processing
+  caching: true           # Enable response caching
+  auto_retry: true        # Auto-retry failed requests
+
+logging:
+  level: info             # debug, info, warn, error
+  format: console         # json, console
+  output: stdout          # stdout, file
+  # file: /var/log/gojira.log  # Required if output is 'file'
+
+security:
+  rate_limit: 100         # Requests per minute per IP
+  enable_cors: true       # Enable CORS for web browsers
+  allowed_origins:
+    - "http://localhost:*"
+    - "https://localhost:*"
+    - "https://your-domain.com"
+  # jwt_secret: ${JWT_SECRET}  # Required for authentication tokens
