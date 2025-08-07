@@ -1,8 +1,48 @@
 package jira
 
 import (
+	"encoding/json"
+	"strings"
 	"time"
 )
+
+// JiraTime wraps time.Time to handle Jira's timestamp format
+type JiraTime struct {
+	time.Time
+}
+
+// UnmarshalJSON implements json.Unmarshaler interface for Jira timestamps
+func (jt *JiraTime) UnmarshalJSON(data []byte) error {
+	// Remove quotes
+	s := strings.Trim(string(data), "\"")
+	if s == "null" || s == "" {
+		return nil
+	}
+	
+	// Try parsing with different formats that Jira uses
+	formats := []string{
+		"2006-01-02T15:04:05.000-0700",  // Jira format with milliseconds and timezone
+		"2006-01-02T15:04:05-0700",      // Jira format with timezone
+		"2006-01-02T15:04:05.000Z",      // ISO format with milliseconds
+		"2006-01-02T15:04:05Z",          // ISO format
+		time.RFC3339Nano,                // Standard RFC3339 with nanoseconds
+		time.RFC3339,                    // Standard RFC3339
+	}
+	
+	for _, format := range formats {
+		if t, err := time.Parse(format, s); err == nil {
+			jt.Time = t
+			return nil
+		}
+	}
+	
+	return &time.ParseError{Layout: "Jira timestamp", Value: s}
+}
+
+// MarshalJSON implements json.Marshaler interface
+func (jt JiraTime) MarshalJSON() ([]byte, error) {
+	return json.Marshal(jt.Time)
+}
 
 // Issue represents a Jira issue
 type Issue struct {
@@ -25,9 +65,9 @@ type IssueFields struct {
 	Assignee    *User          `json:"assignee,omitempty"`
 	Reporter    *User          `json:"reporter,omitempty"`
 	Creator     *User          `json:"creator,omitempty"`
-	Created     *time.Time     `json:"created,omitempty"`
-	Updated     *time.Time     `json:"updated,omitempty"`
-	Resolved    *time.Time     `json:"resolutiondate,omitempty"`
+	Created     *JiraTime      `json:"created,omitempty"`
+	Updated     *JiraTime      `json:"updated,omitempty"`
+	Resolved    *JiraTime      `json:"resolutiondate,omitempty"`
 	Labels      []string       `json:"labels,omitempty"`
 	Components  []Component    `json:"components,omitempty"`
 	Versions    []Version      `json:"versions,omitempty"`
@@ -44,6 +84,10 @@ type IssueFields struct {
 	TimeEstimate         *string `json:"timeestimate,omitempty"`
 	TimeSpent            *string `json:"timespent,omitempty"`
 	
+	// Additional timestamp fields from Jira
+	StatusCategoryChangeDate *JiraTime `json:"statuscategorychangedate,omitempty"`
+	LastViewed               *JiraTime `json:"lastViewed,omitempty"`
+	
 	// Custom fields (dynamic)
 	CustomFields map[string]interface{} `json:"-"`
 }
@@ -55,7 +99,7 @@ type Project struct {
 	Name        string           `json:"name,omitempty"`
 	Description string           `json:"description,omitempty"`
 	Lead        *User            `json:"lead,omitempty"`
-	ProjectType *ProjectType     `json:"projectTypeKey,omitempty"`
+	ProjectTypeKey string        `json:"projectTypeKey,omitempty"`
 	Avatar      *Avatar          `json:"avatarUrls,omitempty"`
 	Components  []Component      `json:"components,omitempty"`
 	Versions    []Version        `json:"versions,omitempty"`
@@ -122,7 +166,7 @@ type Version struct {
 	Description    string     `json:"description,omitempty"`
 	Archived       bool       `json:"archived,omitempty"`
 	Released       bool       `json:"released,omitempty"`
-	ReleaseDate    *time.Time `json:"releaseDate,omitempty"`
+	ReleaseDate    *JiraTime  `json:"releaseDate,omitempty"`
 	UserReleaseDate string    `json:"userReleaseDate,omitempty"`
 	ProjectID      int        `json:"projectId,omitempty"`
 }
@@ -158,8 +202,8 @@ type Comment struct {
 	Author       *User                  `json:"author,omitempty"`
 	Body         interface{}            `json:"body"` // Can be string or ADF format
 	UpdateAuthor *User                  `json:"updateAuthor,omitempty"`
-	Created      *time.Time             `json:"created,omitempty"`
-	Updated      *time.Time             `json:"updated,omitempty"`
+	Created      *JiraTime              `json:"created,omitempty"`
+	Updated      *JiraTime              `json:"updated,omitempty"`
 	Visibility   map[string]interface{} `json:"visibility,omitempty"`
 }
 
@@ -177,7 +221,7 @@ type Attachment struct {
 	Self     string     `json:"self,omitempty"`
 	Filename string     `json:"filename"`
 	Author   *User      `json:"author,omitempty"`
-	Created  *time.Time `json:"created,omitempty"`
+	Created  *JiraTime  `json:"created,omitempty"`
 	Size     int64      `json:"size,omitempty"`
 	MimeType string     `json:"mimeType,omitempty"`
 	Content  string     `json:"content,omitempty"`
@@ -190,9 +234,9 @@ type Worklog struct {
 	Self             string                 `json:"self,omitempty"`
 	Author           *User                  `json:"author,omitempty"`
 	Comment          interface{}            `json:"comment,omitempty"`
-	Created          *time.Time             `json:"created,omitempty"`
-	Updated          *time.Time             `json:"updated,omitempty"`
-	Started          *time.Time             `json:"started,omitempty"`
+	Created          *JiraTime              `json:"created,omitempty"`
+	Updated          *JiraTime              `json:"updated,omitempty"`
+	Started          *JiraTime              `json:"started,omitempty"`
 	TimeSpent        string                 `json:"timeSpent"`
 	TimeSpentSeconds int                    `json:"timeSpentSeconds"`
 	Visibility       map[string]interface{} `json:"visibility,omitempty"`

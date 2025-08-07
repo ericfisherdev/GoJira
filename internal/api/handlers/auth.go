@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ericfisherdev/GoJira/internal/auth"
+	"github.com/ericfisherdev/GoJira/internal/jira"
 	"github.com/go-chi/render"
 )
 
@@ -96,6 +97,10 @@ func Connect(w http.ResponseWriter, r *http.Request) {
 		authManager.AddAuthenticator("current", authenticator)
 		authManager.SetCurrent("current")
 	}
+
+	// Create and set Jira client for issue operations
+	jiraClient := jira.NewClient(jiraURL, authenticator, nil)
+	SetJiraClient(jiraClient)
 
 	// Get user info
 	user, err := authenticator.GetUser()
