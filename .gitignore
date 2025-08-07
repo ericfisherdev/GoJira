@@ -57,3 +57,6 @@ logs/
 # Temporary files
 *.tmp
 /tmp/
+
+# configs with real info
+/configs/gojira.yaml

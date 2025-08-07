@@ -17,6 +17,8 @@ func SetupRoutes(r *chi.Mux) {
 			r.Post("/connect", handlers.Connect)
 			r.Post("/disconnect", handlers.Disconnect)
 			r.Get("/status", handlers.Status)
+			r.Post("/oauth2/start", handlers.OAuth2Start)
+			r.Get("/oauth2/callback", handlers.OAuth2Callback)
 		})
 
 		// Issue routes
@@ -25,6 +27,16 @@ func SetupRoutes(r *chi.Mux) {
 			r.Get("/{key}", handlers.GetIssue)
 			r.Put("/{key}", handlers.UpdateIssue)
 			r.Delete("/{key}", handlers.DeleteIssue)
+			
+			// Issue operations
+			r.Get("/{key}/transitions", handlers.GetIssueTransitions)
+			r.Post("/{key}/transitions", handlers.TransitionIssue)
+		})
+
+		// Search routes
+		r.Route("/search", func(r chi.Router) {
+			r.Get("/", handlers.SearchIssues)
+			r.Post("/", handlers.SearchIssues)
 		})
 	})
 }

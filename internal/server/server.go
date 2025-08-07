@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	customMiddleware "github.com/ericfisherdev/GoJira/internal/api/middleware"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -33,11 +34,10 @@ func New(cfg *Config) *Server {
 	// Core middleware
 	router.Use(middleware.RequestID)
 	router.Use(middleware.RealIP)
-	router.Use(middleware.Recoverer)
+	router.Use(customMiddleware.ErrorHandler()) // Custom error handling with recovery
 	
-	if cfg.LogRequests {
-		router.Use(middleware.Logger)
-	}
+	// Logging middleware
+	router.Use(customMiddleware.Logger())
 
 	// Request timeout
 	router.Use(middleware.Timeout(60 * time.Second))
