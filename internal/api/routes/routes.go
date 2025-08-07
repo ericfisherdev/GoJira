@@ -6,6 +6,9 @@ import (
 )
 
 func SetupRoutes(r *chi.Mux) {
+	// Initialize queue handler
+	queueHandler := handlers.NewQueueHandler()
+	
 	// Health check routes
 	r.Get("/health", handlers.HealthCheck)
 	r.Get("/ready", handlers.ReadinessCheck)
@@ -142,6 +145,22 @@ func SetupRoutes(r *chi.Mux) {
 			r.Post("/command", handlers.ProcessNaturalLanguageCommand)
 			r.Post("/jql", handlers.GenerateJQLFromNaturalLanguage)
 			r.Get("/suggestions", handlers.GetCommandSuggestions)
+		})
+
+		// Queue management routes
+		r.Route("/queue", func(r chi.Router) {
+			r.Post("/jobs", queueHandler.SubmitJob)
+			r.Post("/jobs/batch", queueHandler.SubmitBatchJobs)
+			r.Get("/jobs/result", queueHandler.GetJobResult)
+			r.Delete("/jobs/{jobId}", queueHandler.RemoveJobFromQueue)
+			r.Get("/status", queueHandler.GetQueueStatus)
+			r.Get("/metrics", queueHandler.GetQueueMetrics)
+			r.Delete("/clear", queueHandler.ClearQueue)
+			r.Get("/priority", queueHandler.GetPriorityQueueStatus)
+			
+			// Rate limiter management
+			r.Get("/ratelimiter/stats", queueHandler.GetRateLimiterStats)
+			r.Post("/ratelimiter/reset", queueHandler.ResetRateLimiter)
 		})
 	})
 }
