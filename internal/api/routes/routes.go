@@ -71,13 +71,22 @@ func SetupRoutes(r *chi.Mux) {
 		r.Route("/sprints", func(r chi.Router) {
 			r.Get("/", handlers.GetSprints)
 			r.Post("/", handlers.CreateSprint)
+			r.Get("/active", handlers.GetActiveSprints)
+			r.Get("/upcoming", handlers.GetUpcomingSprints)
+			r.Get("/health", handlers.GetSprintHealthCheck)
+			r.Post("/validate", handlers.ValidateSprintRequest)
 			r.Get("/{id}", handlers.GetSprint)
 			r.Put("/{id}", handlers.UpdateSprint)
 			r.Post("/{id}/start", handlers.StartSprint)
+			r.Post("/{id}/auto-start", handlers.AutoStartSprint)
 			r.Post("/{id}/close", handlers.CloseSprint)
+			r.Post("/{id}/complete", handlers.CompleteSprintWithReport)
 			r.Get("/{id}/issues", handlers.GetSprintIssues)
 			r.Post("/{id}/issues", handlers.MoveIssuesToSprint)
 			r.Get("/{id}/report", handlers.GetSprintReport)
+			r.Get("/{id}/metrics", handlers.GetSprintMetrics)
+			r.Get("/{id}/predict", handlers.PredictSprintSuccess)
+			r.Post("/{id}/clone", handlers.CloneSprint)
 		})
 
 		// Board routes
