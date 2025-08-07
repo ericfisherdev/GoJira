@@ -529,3 +529,174 @@ func TransitionIssue(w http.ResponseWriter, r *http.Request) {
 	render.Status(r, http.StatusOK)
 	render.Render(w, r, response)
 }
+
+// GetIssueLinks retrieves links for an issue
+func GetIssueLinks(w http.ResponseWriter, r *http.Request) {
+	if jiraClient == nil || !authManager.IsAuthenticated() {
+		render.Render(w, r, ErrUnauthorized(fmt.Errorf("not connected to Jira")))
+		return
+	}
+
+	issueKey := chi.URLParam(r, "key")
+	if issueKey == "" {
+		render.Render(w, r, ErrInvalidRequest(fmt.Errorf("missing issue key")))
+		return
+	}
+
+	links, err := jiraClient.GetIssueLinks(issueKey)
+	if err != nil {
+		render.Render(w, r, ErrInternalServer(err))
+		return
+	}
+
+	response := &IssueResponse{
+		Success: true,
+		Data: map[string]interface{}{
+			"issueKey": issueKey,
+			"links":    links,
+		},
+	}
+
+	render.Status(r, http.StatusOK)
+	render.Render(w, r, response)
+}
+
+// CreateLinkRequest for creating issue links
+type CreateLinkRequest struct {
+	InwardIssue  string `json:"inwardIssue"`
+	OutwardIssue string `json:"outwardIssue"`
+	LinkType     string `json:"linkType"`
+	Comment      string `json:"comment,omitempty"`
+}
+
+func (c *CreateLinkRequest) Bind(r *http.Request) error {
+	if c.InwardIssue == "" {
+		return fmt.Errorf("inwardIssue is required")
+	}
+	if c.OutwardIssue == "" {
+		return fmt.Errorf("outwardIssue is required")
+	}
+	if c.LinkType == "" {
+		return fmt.Errorf("linkType is required")
+	}
+	return nil
+}
+
+// CreateIssueLink creates a link between two issues
+func CreateIssueLink(w http.ResponseWriter, r *http.Request) {
+	if jiraClient == nil || !authManager.IsAuthenticated() {
+		render.Render(w, r, ErrUnauthorized(fmt.Errorf("not connected to Jira")))
+		return
+	}
+
+	var req CreateLinkRequest
+	if err := render.Bind(r, &req); err != nil {
+		render.Render(w, r, ErrInvalidRequest(err))
+		return
+	}
+
+	err := jiraClient.CreateIssueLink(req.InwardIssue, req.OutwardIssue, req.LinkType, req.Comment)
+	if err != nil {
+		render.Render(w, r, ErrInternalServer(err))
+		return
+	}
+
+	response := &IssueResponse{
+		Success: true,
+		Data: map[string]interface{}{
+			"message":      "Issue link created successfully",
+			"inwardIssue":  req.InwardIssue,
+			"outwardIssue": req.OutwardIssue,
+			"linkType":     req.LinkType,
+		},
+	}
+
+	render.Status(r, http.StatusCreated)
+	render.Render(w, r, response)
+}
+
+// DeleteIssueLink deletes a link between issues
+func DeleteIssueLink(w http.ResponseWriter, r *http.Request) {
+	if jiraClient == nil || !authManager.IsAuthenticated() {
+		render.Render(w, r, ErrUnauthorized(fmt.Errorf("not connected to Jira")))
+		return
+	}
+
+	linkID := chi.URLParam(r, "id")
+	if linkID == "" {
+		render.Render(w, r, ErrInvalidRequest(fmt.Errorf("missing link ID")))
+		return
+	}
+
+	err := jiraClient.DeleteIssueLink(linkID)
+	if err != nil {
+		render.Render(w, r, ErrInternalServer(err))
+		return
+	}
+
+	response := &IssueResponse{
+		Success: true,
+		Data: map[string]interface{}{
+			"message": "Issue link deleted successfully",
+			"linkId":  linkID,
+		},
+	}
+
+	render.Status(r, http.StatusOK)
+	render.Render(w, r, response)
+}
+
+// GetLinkTypes retrieves available link types
+func GetLinkTypes(w http.ResponseWriter, r *http.Request) {
+	if jiraClient == nil || !authManager.IsAuthenticated() {
+		render.Render(w, r, ErrUnauthorized(fmt.Errorf("not connected to Jira")))
+		return
+	}
+
+	linkTypes, err := jiraClient.GetIssueLinkTypes()
+	if err != nil {
+		render.Render(w, r, ErrInternalServer(err))
+		return
+	}
+
+	response := &IssueResponse{
+		Success: true,
+		Data: map[string]interface{}{
+			"linkTypes": linkTypes,
+		},
+	}
+
+	render.Status(r, http.StatusOK)
+	render.Render(w, r, response)
+}
+
+// GetCustomFields retrieves custom fields for a project
+func GetCustomFields(w http.ResponseWriter, r *http.Request) {
+	if jiraClient == nil || !authManager.IsAuthenticated() {
+		render.Render(w, r, ErrUnauthorized(fmt.Errorf("not connected to Jira")))
+		return
+	}
+
+	projectKey := chi.URLParam(r, "key")
+	if projectKey == "" {
+		render.Render(w, r, ErrInvalidRequest(fmt.Errorf("missing project key")))
+		return
+	}
+
+	customFields, err := jiraClient.GetCustomFields(projectKey)
+	if err != nil {
+		render.Render(w, r, ErrInternalServer(err))
+		return
+	}
+
+	response := &IssueResponse{
+		Success: true,
+		Data: map[string]interface{}{
+			"projectKey":   projectKey,
+			"customFields": customFields,
+		},
+	}
+
+	render.Status(r, http.StatusOK)
+	render.Render(w, r, response)
+}

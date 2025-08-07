@@ -31,6 +31,13 @@ func SetupRoutes(r *chi.Mux) {
 			// Issue operations
 			r.Get("/{key}/transitions", handlers.GetIssueTransitions)
 			r.Post("/{key}/transitions", handlers.TransitionIssue)
+			r.Get("/{key}/links", handlers.GetIssueLinks)
+			r.Get("/{key}/customfields", handlers.GetCustomFields)
+			
+			// Issue linking
+			r.Post("/link", handlers.CreateIssueLink)
+			r.Delete("/link/{id}", handlers.DeleteIssueLink)
+			r.Get("/linktypes", handlers.GetLinkTypes)
 		})
 
 		// Search routes
