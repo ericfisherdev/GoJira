@@ -6,8 +6,9 @@ import (
 )
 
 func SetupRoutes(r *chi.Mux) {
-	// Initialize queue handler
+	// Initialize handlers
 	queueHandler := handlers.NewQueueHandler()
+	nlpHandler := handlers.NewNLPHandler()
 	
 	// Health check routes
 	r.Get("/health", handlers.HealthCheck)
@@ -145,6 +146,17 @@ func SetupRoutes(r *chi.Mux) {
 			r.Post("/command", handlers.ProcessNaturalLanguageCommand)
 			r.Post("/jql", handlers.GenerateJQLFromNaturalLanguage)
 			r.Get("/suggestions", handlers.GetCommandSuggestions)
+		})
+
+		// Natural Language Processing routes
+		r.Route("/nlp", func(r chi.Router) {
+			r.Post("/parse", nlpHandler.ProcessNaturalLanguageCommand)
+			r.Post("/entities", nlpHandler.ExtractEntities)
+			r.Get("/suggestions", nlpHandler.GetCommandSuggestions)
+			r.Post("/suggestions", nlpHandler.GetCommandSuggestions)
+			r.Post("/validate", nlpHandler.ValidateCommand)
+			r.Get("/status", nlpHandler.GetParserStatus)
+			r.Post("/context", nlpHandler.UpdateContext)
 		})
 
 		// Queue management routes
