@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ericfisherdev/GoJira/internal/claude"
 	"github.com/ericfisherdev/GoJira/internal/jira"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"
@@ -699,4 +700,779 @@ func GetCustomFields(w http.ResponseWriter, r *http.Request) {
 
 	render.Status(r, http.StatusOK)
 	render.Render(w, r, response)
+}
+
+// AdvancedSearchRequest represents an advanced search request
+type AdvancedSearchRequest struct {
+	JQL        string   `json:"jql" binding:"required"`
+	StartAt    int      `json:"startAt,omitempty"`
+	MaxResults int      `json:"maxResults,omitempty"`
+	Fields     []string `json:"fields,omitempty"`
+	Expand     []string `json:"expand,omitempty"`
+	Properties []string `json:"properties,omitempty"`
+}
+
+func (a *AdvancedSearchRequest) Bind(r *http.Request) error {
+	if a.JQL == "" {
+		return fmt.Errorf("jql is required")
+	}
+	if a.MaxResults <= 0 {
+		a.MaxResults = 50 // Default
+	}
+	if a.MaxResults > 1000 {
+		a.MaxResults = 1000 // Max allowed
+	}
+	return nil
+}
+
+// AdvancedSearchIssues performs advanced search with full request body support
+func AdvancedSearchIssues(w http.ResponseWriter, r *http.Request) {
+	if jiraClient == nil || !authManager.IsAuthenticated() {
+		render.Render(w, r, ErrUnauthorized(fmt.Errorf("not connected to Jira")))
+		return
+	}
+
+	var req AdvancedSearchRequest
+	if err := render.Bind(r, &req); err != nil {
+		render.Render(w, r, ErrInvalidRequest(err))
+		return
+	}
+
+	searchReq := jira.SearchRequest{
+		JQL:        req.JQL,
+		StartAt:    req.StartAt,
+		MaxResults: req.MaxResults,
+		Fields:     req.Fields,
+		Expand:     req.Expand,
+		Properties: req.Properties,
+	}
+
+	result, err := jiraClient.SearchIssuesAdvanced(searchReq)
+	if err != nil {
+		render.Render(w, r, ErrInternalServer(err))
+		return
+	}
+
+	response := &IssueResponse{
+		Success: true,
+		Data: map[string]interface{}{
+			"startAt":         result.StartAt,
+			"maxResults":      result.MaxResults,
+			"total":           result.Total,
+			"issues":          result.Issues,
+			"warningMessages": result.WarningMessages,
+		},
+	}
+
+	render.Status(r, http.StatusOK)
+	render.Render(w, r, response)
+}
+
+// ValidateJQL validates a JQL query
+func ValidateJQL(w http.ResponseWriter, r *http.Request) {
+	if jiraClient == nil || !authManager.IsAuthenticated() {
+		render.Render(w, r, ErrUnauthorized(fmt.Errorf("not connected to Jira")))
+		return
+	}
+
+	jqlQuery := r.URL.Query().Get("jql")
+	if jqlQuery == "" {
+		render.Render(w, r, ErrInvalidRequest(fmt.Errorf("jql parameter is required")))
+		return
+	}
+
+	isValid, errors, err := jiraClient.ValidateJQL(jqlQuery)
+	if err != nil {
+		render.Render(w, r, ErrInternalServer(err))
+		return
+	}
+
+	response := &IssueResponse{
+		Success: true,
+		Data: map[string]interface{}{
+			"jql":     jqlQuery,
+			"valid":   isValid,
+			"errors":  errors,
+		},
+	}
+
+	render.Status(r, http.StatusOK)
+	render.Render(w, r, response)
+}
+
+// GetJQLSuggestions gets JQL autocomplete suggestions
+func GetJQLSuggestions(w http.ResponseWriter, r *http.Request) {
+	if jiraClient == nil || !authManager.IsAuthenticated() {
+		render.Render(w, r, ErrUnauthorized(fmt.Errorf("not connected to Jira")))
+		return
+	}
+
+	fieldName := r.URL.Query().Get("fieldName")
+	if fieldName == "" {
+		render.Render(w, r, ErrInvalidRequest(fmt.Errorf("fieldName parameter is required")))
+		return
+	}
+
+	fieldValue := r.URL.Query().Get("fieldValue")
+	
+	suggestions, err := jiraClient.GetJQLSuggestions(fieldName, fieldValue)
+	if err != nil {
+		render.Render(w, r, ErrInternalServer(err))
+		return
+	}
+
+	response := &IssueResponse{
+		Success: true,
+		Data: map[string]interface{}{
+			"fieldName":   fieldName,
+			"fieldValue":  fieldValue,
+			"suggestions": suggestions,
+		},
+	}
+
+	render.Status(r, http.StatusOK)
+	render.Render(w, r, response)
+}
+
+// GetAllFilters gets all saved filters
+func GetAllFilters(w http.ResponseWriter, r *http.Request) {
+	if jiraClient == nil || !authManager.IsAuthenticated() {
+		render.Render(w, r, ErrUnauthorized(fmt.Errorf("not connected to Jira")))
+		return
+	}
+
+	filters, err := jiraClient.GetAllFilters()
+	if err != nil {
+		render.Render(w, r, ErrInternalServer(err))
+		return
+	}
+
+	response := &IssueResponse{
+		Success: true,
+		Data: map[string]interface{}{
+			"filters": filters,
+			"count":   len(filters),
+		},
+	}
+
+	render.Status(r, http.StatusOK)
+	render.Render(w, r, response)
+}
+
+// GetFilter gets a specific filter by ID
+func GetFilter(w http.ResponseWriter, r *http.Request) {
+	if jiraClient == nil || !authManager.IsAuthenticated() {
+		render.Render(w, r, ErrUnauthorized(fmt.Errorf("not connected to Jira")))
+		return
+	}
+
+	filterID := chi.URLParam(r, "id")
+	if filterID == "" {
+		render.Render(w, r, ErrInvalidRequest(fmt.Errorf("missing filter ID")))
+		return
+	}
+
+	filter, err := jiraClient.GetFilter(filterID)
+	if err != nil {
+		if err.Error() == "filter not found" {
+			render.Render(w, r, ErrNotFound("filter"))
+			return
+		}
+		render.Render(w, r, ErrInternalServer(err))
+		return
+	}
+
+	response := &IssueResponse{
+		Success: true,
+		Data:    filter,
+	}
+
+	render.Status(r, http.StatusOK)
+	render.Render(w, r, response)
+}
+
+// SearchWithFilter searches using a saved filter
+func SearchWithFilter(w http.ResponseWriter, r *http.Request) {
+	if jiraClient == nil || !authManager.IsAuthenticated() {
+		render.Render(w, r, ErrUnauthorized(fmt.Errorf("not connected to Jira")))
+		return
+	}
+
+	filterID := chi.URLParam(r, "id")
+	if filterID == "" {
+		render.Render(w, r, ErrInvalidRequest(fmt.Errorf("missing filter ID")))
+		return
+	}
+
+	// Parse pagination parameters
+	startAt := 0
+	maxResults := 50
+
+	if startAtStr := r.URL.Query().Get("startAt"); startAtStr != "" {
+		if val, err := strconv.Atoi(startAtStr); err == nil && val >= 0 {
+			startAt = val
+		}
+	}
+
+	if maxResultsStr := r.URL.Query().Get("maxResults"); maxResultsStr != "" {
+		if val, err := strconv.Atoi(maxResultsStr); err == nil && val > 0 && val <= 1000 {
+			maxResults = val
+		}
+	}
+
+	result, err := jiraClient.SearchWithFilter(filterID, startAt, maxResults)
+	if err != nil {
+		render.Render(w, r, ErrInternalServer(err))
+		return
+	}
+
+	response := &IssueResponse{
+		Success: true,
+		Data: map[string]interface{}{
+			"filterID":        filterID,
+			"startAt":         result.StartAt,
+			"maxResults":      result.MaxResults,
+			"total":           result.Total,
+			"issues":          result.Issues,
+			"warningMessages": result.WarningMessages,
+		},
+	}
+
+	render.Status(r, http.StatusOK)
+	render.Render(w, r, response)
+}
+
+// GetJQLFields gets available JQL fields for autocomplete
+func GetJQLFields(w http.ResponseWriter, r *http.Request) {
+	if jiraClient == nil || !authManager.IsAuthenticated() {
+		render.Render(w, r, ErrUnauthorized(fmt.Errorf("not connected to Jira")))
+		return
+	}
+
+	fields, err := jiraClient.GetJQLFields()
+	if err != nil {
+		render.Render(w, r, ErrInternalServer(err))
+		return
+	}
+
+	response := &IssueResponse{
+		Success: true,
+		Data: map[string]interface{}{
+			"fields": fields,
+			"count":  len(fields),
+		},
+	}
+
+	render.Status(r, http.StatusOK)
+	render.Render(w, r, response)
+}
+
+// GetJQLFunctions gets available JQL functions for autocomplete
+func GetJQLFunctions(w http.ResponseWriter, r *http.Request) {
+	if jiraClient == nil || !authManager.IsAuthenticated() {
+		render.Render(w, r, ErrUnauthorized(fmt.Errorf("not connected to Jira")))
+		return
+	}
+
+	functions, err := jiraClient.GetJQLFunctions()
+	if err != nil {
+		render.Render(w, r, ErrInternalServer(err))
+		return
+	}
+
+	response := &IssueResponse{
+		Success: true,
+		Data: map[string]interface{}{
+			"functions": functions,
+			"count":     len(functions),
+		},
+	}
+
+	render.Status(r, http.StatusOK)
+	render.Render(w, r, response)
+}
+
+// SearchWithPaginationHandler performs search with enhanced pagination
+func SearchWithPaginationHandler(w http.ResponseWriter, r *http.Request) {
+	if jiraClient == nil || !authManager.IsAuthenticated() {
+		render.Render(w, r, ErrUnauthorized(fmt.Errorf("not connected to Jira")))
+		return
+	}
+
+	var req AdvancedSearchRequest
+	if err := render.Bind(r, &req); err != nil {
+		render.Render(w, r, ErrInvalidRequest(err))
+		return
+	}
+
+	searchReq := jira.SearchRequest{
+		JQL:        req.JQL,
+		StartAt:    req.StartAt,
+		MaxResults: req.MaxResults,
+		Fields:     req.Fields,
+		Expand:     req.Expand,
+		Properties: req.Properties,
+	}
+
+	result, err := jiraClient.SearchWithPagination(searchReq)
+	if err != nil {
+		render.Render(w, r, ErrInternalServer(err))
+		return
+	}
+
+	response := &IssueResponse{
+		Success: true,
+		Data:    result,
+	}
+
+	render.Status(r, http.StatusOK)
+	render.Render(w, r, response)
+}
+
+// ExportSearchResults exports search results in various formats
+func ExportSearchResults(w http.ResponseWriter, r *http.Request) {
+	if jiraClient == nil || !authManager.IsAuthenticated() {
+		render.Render(w, r, ErrUnauthorized(fmt.Errorf("not connected to Jira")))
+		return
+	}
+
+	// Parse search request
+	var searchReq AdvancedSearchRequest
+	if err := render.Bind(r, &searchReq); err != nil {
+		render.Render(w, r, ErrInvalidRequest(err))
+		return
+	}
+
+	// Parse export format from query parameter
+	formatStr := r.URL.Query().Get("format")
+	if formatStr == "" {
+		formatStr = "json"
+	}
+
+	exportReq := jira.ExportRequest{
+		Format: jira.ExportFormat(formatStr),
+		Fields: searchReq.Fields,
+	}
+
+	// Validate export request
+	if err := jira.ValidateExportRequest(exportReq); err != nil {
+		render.Render(w, r, ErrInvalidRequest(err))
+		return
+	}
+
+	// Perform the search
+	jiraSearchReq := jira.SearchRequest{
+		JQL:        searchReq.JQL,
+		StartAt:    searchReq.StartAt,
+		MaxResults: searchReq.MaxResults,
+		Fields:     searchReq.Fields,
+		Expand:     searchReq.Expand,
+		Properties: searchReq.Properties,
+	}
+
+	searchResult, err := jiraClient.SearchIssuesAdvanced(jiraSearchReq)
+	if err != nil {
+		render.Render(w, r, ErrInternalServer(err))
+		return
+	}
+
+	// Export the results
+	exportResult, err := jiraClient.ExportSearchResults(searchResult, exportReq)
+	if err != nil {
+		render.Render(w, r, ErrInternalServer(err))
+		return
+	}
+
+	// Set appropriate headers and return file
+	w.Header().Set("Content-Type", exportResult.ContentType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", exportResult.Filename))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", exportResult.Size))
+
+	w.WriteHeader(http.StatusOK)
+	w.Write(exportResult.Data)
+}
+
+// GetSearchPage retrieves a specific page of search results
+func GetSearchPage(w http.ResponseWriter, r *http.Request) {
+	if jiraClient == nil || !authManager.IsAuthenticated() {
+		render.Render(w, r, ErrUnauthorized(fmt.Errorf("not connected to Jira")))
+		return
+	}
+
+	var req AdvancedSearchRequest
+	if err := render.Bind(r, &req); err != nil {
+		render.Render(w, r, ErrInvalidRequest(err))
+		return
+	}
+
+	pageStr := r.URL.Query().Get("page")
+	page := 1
+	if pageStr != "" {
+		if val, err := strconv.Atoi(pageStr); err == nil && val > 0 {
+			page = val
+		}
+	}
+
+	searchReq := jira.SearchRequest{
+		JQL:        req.JQL,
+		StartAt:    req.StartAt,
+		MaxResults: req.MaxResults,
+		Fields:     req.Fields,
+		Expand:     req.Expand,
+		Properties: req.Properties,
+	}
+
+	result, err := jiraClient.SearchPage(searchReq, page)
+	if err != nil {
+		render.Render(w, r, ErrInternalServer(err))
+		return
+	}
+
+	response := &IssueResponse{
+		Success: true,
+		Data:    result,
+	}
+
+	render.Status(r, http.StatusOK)
+	render.Render(w, r, response)
+}
+
+// GetAllSearchPages retrieves all pages of search results
+func GetAllSearchPages(w http.ResponseWriter, r *http.Request) {
+	if jiraClient == nil || !authManager.IsAuthenticated() {
+		render.Render(w, r, ErrUnauthorized(fmt.Errorf("not connected to Jira")))
+		return
+	}
+
+	var req AdvancedSearchRequest
+	if err := render.Bind(r, &req); err != nil {
+		render.Render(w, r, ErrInvalidRequest(err))
+		return
+	}
+
+	maxPagesStr := r.URL.Query().Get("maxPages")
+	maxPages := 10 // Default limit
+	if maxPagesStr != "" {
+		if val, err := strconv.Atoi(maxPagesStr); err == nil && val > 0 && val <= 100 {
+			maxPages = val
+		}
+	}
+
+	searchReq := jira.SearchRequest{
+		JQL:        req.JQL,
+		StartAt:    req.StartAt,
+		MaxResults: req.MaxResults,
+		Fields:     req.Fields,
+		Expand:     req.Expand,
+		Properties: req.Properties,
+	}
+
+	allResults, err := jiraClient.SearchAllPages(searchReq, maxPages)
+	if err != nil {
+		render.Render(w, r, ErrInternalServer(err))
+		return
+	}
+
+	// Combine all results
+	combined := jira.CombineSearchResults(allResults)
+
+	response := &IssueResponse{
+		Success: true,
+		Data: map[string]interface{}{
+			"totalPages":   len(allResults),
+			"totalIssues":  len(combined.Issues),
+			"searchTotal":  combined.Total,
+			"issues":       combined.Issues,
+			"warnings":     combined.WarningMessages,
+		},
+	}
+
+	render.Status(r, http.StatusOK)
+	render.Render(w, r, response)
+}
+
+// Claude-optimized handlers
+
+// NLRequest represents a natural language command request
+type NLRequest struct {
+	Command string `json:"command"`
+}
+
+func (req *NLRequest) Bind(r *http.Request) error {
+	if req.Command == "" {
+		return fmt.Errorf("command is required")
+	}
+	return nil
+}
+
+// JQLRequest represents a JQL generation request
+type JQLRequest struct {
+	Query string `json:"query"`
+}
+
+func (req *JQLRequest) Bind(r *http.Request) error {
+	if req.Query == "" {
+		return fmt.Errorf("query is required")
+	}
+	return nil
+}
+
+// ClaudeGetIssue returns a Claude-optimized issue response
+func ClaudeGetIssue(w http.ResponseWriter, r *http.Request) {
+	if jiraClient == nil {
+		render.Render(w, r, ErrInternalServer(fmt.Errorf("jira client not initialized")))
+		return
+	}
+
+	claudeManager := claude.GetManager()
+	formatter := claudeManager.GetFormatter()
+
+	issueKey := chi.URLParam(r, "key")
+	if issueKey == "" {
+		render.Render(w, r, ErrInvalidRequest(fmt.Errorf("issue key is required")))
+		return
+	}
+
+	issue, err := jiraClient.GetIssue(context.Background(), issueKey, nil)
+	if err != nil {
+		response := formatter.FormatErrorResponse(err, "Get Issue")
+		render.Status(r, http.StatusInternalServerError)
+		render.JSON(w, r, response)
+		return
+	}
+
+	response := formatter.FormatIssueResponse(issue, "get")
+	render.Status(r, http.StatusOK)
+	render.JSON(w, r, response)
+}
+
+// ClaudeSearchIssues returns Claude-optimized search results
+func ClaudeSearchIssues(w http.ResponseWriter, r *http.Request) {
+	if jiraClient == nil {
+		render.Render(w, r, ErrInternalServer(fmt.Errorf("jira client not initialized")))
+		return
+	}
+
+	claudeManager := claude.GetManager()
+	formatter := claudeManager.GetFormatter()
+
+	var req jira.SearchRequest
+	if err := render.Bind(r, &req); err != nil {
+		response := formatter.FormatErrorResponse(err, "Search Issues")
+		render.Status(r, http.StatusBadRequest)
+		render.JSON(w, r, response)
+		return
+	}
+
+	result, err := jiraClient.SearchIssuesAdvanced(req)
+	if err != nil {
+		response := formatter.FormatErrorResponse(err, "Search Issues")
+		render.Status(r, http.StatusInternalServerError)
+		render.JSON(w, r, response)
+		return
+	}
+
+	response := formatter.FormatSearchResponse(result, req.JQL)
+	render.Status(r, http.StatusOK)
+	render.JSON(w, r, response)
+}
+
+// ClaudeCreateIssue returns Claude-optimized issue creation response
+func ClaudeCreateIssue(w http.ResponseWriter, r *http.Request) {
+	if jiraClient == nil {
+		render.Render(w, r, ErrInternalServer(fmt.Errorf("jira client not initialized")))
+		return
+	}
+
+	claudeManager := claude.GetManager()
+	formatter := claudeManager.GetFormatter()
+
+	var req CreateIssueRequest
+	if err := render.Bind(r, &req); err != nil {
+		response := formatter.FormatErrorResponse(err, "Create Issue")
+		render.Status(r, http.StatusBadRequest)
+		render.JSON(w, r, response)
+		return
+	}
+
+	fields := map[string]interface{}{
+		"project": map[string]string{
+			"key": req.Project,
+		},
+		"summary": req.Summary,
+		"issuetype": map[string]string{
+			"name": req.IssueType,
+		},
+	}
+
+	if req.Description != "" {
+		fields["description"] = req.Description
+	}
+
+	if req.Priority != "" {
+		fields["priority"] = map[string]string{"name": req.Priority}
+	}
+
+	if req.Assignee != "" {
+		fields["assignee"] = map[string]string{"name": req.Assignee}
+	}
+
+	if len(req.Labels) > 0 {
+		fields["labels"] = req.Labels
+	}
+
+	if len(req.Components) > 0 {
+		components := make([]map[string]string, len(req.Components))
+		for i, compName := range req.Components {
+			components[i] = map[string]string{"name": compName}
+		}
+		fields["components"] = components
+	}
+
+	createReq := &jira.CreateIssueRequest{
+		Fields: fields,
+	}
+
+	issue, err := jiraClient.CreateIssue(context.Background(), createReq)
+	if err != nil {
+		response := formatter.FormatErrorResponse(err, "Create Issue")
+		render.Status(r, http.StatusInternalServerError)
+		render.JSON(w, r, response)
+		return
+	}
+
+	response := formatter.FormatIssueResponse(issue, "create")
+	render.Status(r, http.StatusCreated)
+	render.JSON(w, r, response)
+}
+
+// ProcessNaturalLanguageCommand processes natural language commands and returns Claude-optimized responses
+func ProcessNaturalLanguageCommand(w http.ResponseWriter, r *http.Request) {
+	claudeManager := claude.GetManager()
+	formatter := claudeManager.GetFormatter()
+	processor := claudeManager.GetProcessor()
+
+	var req NLRequest
+	if err := render.Bind(r, &req); err != nil {
+		response := formatter.FormatErrorResponse(err, "Process Command")
+		render.Status(r, http.StatusBadRequest)
+		render.JSON(w, r, response)
+		return
+	}
+
+	parsedCmd, err := processor.ParseCommand(req.Command)
+	if err != nil {
+		response := formatter.FormatErrorResponse(err, "Parse Command")
+		render.Status(r, http.StatusBadRequest)
+		render.JSON(w, r, response)
+		return
+	}
+
+	// Validate command
+	missingParams := processor.ValidateCommand(parsedCmd)
+	if len(missingParams) > 0 {
+		response := &claude.ClaudeResponse{
+			Success: false,
+			Summary: fmt.Sprintf("Missing required parameters: %s", strings.Join(missingParams, ", ")),
+			Details: parsedCmd,
+			Suggestions: []string{
+				"Please provide all required parameters",
+				"Try a more specific command",
+			},
+			Context: map[string]interface{}{
+				"parsedCommand":    parsedCmd.Action,
+				"missingParams":    missingParams,
+				"originalCommand":  req.Command,
+			},
+		}
+		render.Status(r, http.StatusBadRequest)
+		render.JSON(w, r, response)
+		return
+	}
+
+	response := formatter.FormatGenericResponse(
+		parsedCmd,
+		fmt.Sprintf("✅ Successfully parsed command: %s (confidence: %.2f)", parsedCmd.Action, parsedCmd.Confidence),
+		"Parse Command",
+	)
+
+	// Add suggestions for next steps
+	response.Suggestions = []string{
+		"Execute the parsed command",
+		"Refine the command if needed",
+		"Ask for help with command syntax",
+	}
+
+	render.Status(r, http.StatusOK)
+	render.JSON(w, r, response)
+}
+
+// GenerateJQLFromNaturalLanguage converts natural language to JQL using Claude processing
+func GenerateJQLFromNaturalLanguage(w http.ResponseWriter, r *http.Request) {
+	claudeManager := claude.GetManager()
+	formatter := claudeManager.GetFormatter()
+	processor := claudeManager.GetProcessor()
+
+	var req JQLRequest
+	if err := render.Bind(r, &req); err != nil {
+		response := formatter.FormatErrorResponse(err, "Generate JQL")
+		render.Status(r, http.StatusBadRequest)
+		render.JSON(w, r, response)
+		return
+	}
+
+	jql, err := processor.GenerateJQLFromNaturalLanguage(req.Query)
+	if err != nil {
+		response := formatter.FormatErrorResponse(err, "Generate JQL")
+		render.Status(r, http.StatusBadRequest)
+		render.JSON(w, r, response)
+		return
+	}
+
+	response := formatter.FormatGenericResponse(
+		map[string]interface{}{
+			"originalQuery": req.Query,
+			"generatedJQL":  jql,
+		},
+		fmt.Sprintf("✅ Generated JQL: %s", jql),
+		"Generate JQL",
+	)
+
+	response.Suggestions = []string{
+		"Use this JQL to search for issues",
+		"Refine the natural language query for better results",
+		"Test the generated JQL",
+	}
+
+	render.Status(r, http.StatusOK)
+	render.JSON(w, r, response)
+}
+
+// GetCommandSuggestions provides command suggestions for partial input
+func GetCommandSuggestions(w http.ResponseWriter, r *http.Request) {
+	claudeManager := claude.GetManager()
+	formatter := claudeManager.GetFormatter()
+	processor := claudeManager.GetProcessor()
+
+	partialInput := r.URL.Query().Get("input")
+	if partialInput == "" {
+		response := formatter.FormatErrorResponse(fmt.Errorf("input parameter is required"), "Get Suggestions")
+		render.Status(r, http.StatusBadRequest)
+		render.JSON(w, r, response)
+		return
+	}
+
+	suggestions := processor.SuggestCommands(partialInput)
+
+	response := formatter.FormatGenericResponse(
+		map[string]interface{}{
+			"partialInput": partialInput,
+			"suggestions":  suggestions,
+		},
+		fmt.Sprintf("Found %d command suggestions", len(suggestions)),
+		"Get Command Suggestions",
+	)
+
+	render.Status(r, http.StatusOK)
+	render.JSON(w, r, response)
 }

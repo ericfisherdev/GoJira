@@ -9,6 +9,11 @@ func SetupRoutes(r *chi.Mux) {
 	// Health check routes
 	r.Get("/health", handlers.HealthCheck)
 	r.Get("/ready", handlers.ReadinessCheck)
+	
+	// Metrics and monitoring routes
+	r.Get("/metrics", handlers.GetMetrics)
+	r.Post("/metrics/reset", handlers.ResetMetrics)
+	r.Get("/health/detailed", handlers.GetHealthWithMetrics)
 
 	// API v1 routes
 	r.Route("/api/v1", func(r chi.Router) {
@@ -44,6 +49,35 @@ func SetupRoutes(r *chi.Mux) {
 		r.Route("/search", func(r chi.Router) {
 			r.Get("/", handlers.SearchIssues)
 			r.Post("/", handlers.SearchIssues)
+			r.Post("/advanced", handlers.AdvancedSearchIssues)
+			r.Post("/paginated", handlers.SearchWithPaginationHandler)
+			r.Post("/export", handlers.ExportSearchResults)
+			r.Post("/page", handlers.GetSearchPage)
+			r.Post("/all-pages", handlers.GetAllSearchPages)
+			r.Get("/validate", handlers.ValidateJQL)
+			r.Get("/suggestions", handlers.GetJQLSuggestions)
+			r.Get("/fields", handlers.GetJQLFields)
+			r.Get("/functions", handlers.GetJQLFunctions)
+		})
+
+		// Filter routes
+		r.Route("/filters", func(r chi.Router) {
+			r.Get("/", handlers.GetAllFilters)
+			r.Get("/{id}", handlers.GetFilter)
+			r.Get("/{id}/search", handlers.SearchWithFilter)
+		})
+
+		// Claude-optimized routes
+		r.Route("/claude", func(r chi.Router) {
+			// Claude-formatted issue operations
+			r.Get("/issues/{key}", handlers.ClaudeGetIssue)
+			r.Post("/issues", handlers.ClaudeCreateIssue)
+			r.Post("/search", handlers.ClaudeSearchIssues)
+			
+			// Natural language processing
+			r.Post("/command", handlers.ProcessNaturalLanguageCommand)
+			r.Post("/jql", handlers.GenerateJQLFromNaturalLanguage)
+			r.Get("/suggestions", handlers.GetCommandSuggestions)
 		})
 	})
 }

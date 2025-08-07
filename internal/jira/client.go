@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ericfisherdev/GoJira/internal/auth"
+	"github.com/ericfisherdev/GoJira/internal/monitoring"
 	"github.com/go-resty/resty/v2"
 )
 
@@ -61,6 +62,9 @@ func NewClient(baseURL string, authenticator auth.Authenticator, opts *ClientOpt
 
 // doRequest executes an HTTP request with authentication
 func (c *Client) doRequest(ctx context.Context, method, endpoint string, body interface{}) (*resty.Response, error) {
+	// Track API call
+	monitoring.GlobalMetrics.IncrementJiraAPICalls()
+	
 	req := c.httpClient.R().SetContext(ctx)
 
 	// Add authentication headers
@@ -76,18 +80,28 @@ func (c *Client) doRequest(ctx context.Context, method, endpoint string, body in
 	}
 
 	// Execute request
+	var resp *resty.Response
+	var err error
+	
 	switch strings.ToUpper(method) {
 	case "GET":
-		return req.Get(endpoint)
+		resp, err = req.Get(endpoint)
 	case "POST":
-		return req.Post(endpoint)
+		resp, err = req.Post(endpoint)
 	case "PUT":
-		return req.Put(endpoint)
+		resp, err = req.Put(endpoint)
 	case "DELETE":
-		return req.Delete(endpoint)
+		resp, err = req.Delete(endpoint)
 	default:
-		return nil, fmt.Errorf("unsupported HTTP method: %s", method)
+		err = fmt.Errorf("unsupported HTTP method: %s", method)
 	}
+	
+	// Track API call errors
+	if err != nil || (resp != nil && resp.StatusCode() >= 400) {
+		monitoring.GlobalMetrics.IncrementJiraAPIErrors()
+	}
+	
+	return resp, err
 }
 
 // handleErrorResponse handles Jira API error responses

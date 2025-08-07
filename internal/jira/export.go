@@ -1,0 +1,280 @@
+package jira
+
+import (
+	"bytes"
+	"encoding/csv"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+)
+
+// ExportFormat represents the supported export formats
+type ExportFormat string
+
+const (
+	FormatJSON     ExportFormat = "json"
+	FormatCSV      ExportFormat = "csv" 
+	FormatMarkdown ExportFormat = "markdown"
+)
+
+// ExportRequest represents a request to export search results
+type ExportRequest struct {
+	Format             ExportFormat `json:"format" binding:"required"`
+	Fields             []string     `json:"fields,omitempty"`
+	IncludeComments    bool         `json:"includeComments,omitempty"`
+	IncludeAttachments bool         `json:"includeAttachments,omitempty"`
+}
+
+// ExportResult represents the result of an export operation
+type ExportResult struct {
+	ContentType string `json:"contentType"`
+	Filename    string `json:"filename"`
+	Data        []byte `json:"data"`
+	Size        int    `json:"size"`
+}
+
+// ExportSearchResults exports search results in the specified format
+func (c *Client) ExportSearchResults(result *ExtendedSearchResult, req ExportRequest) (*ExportResult, error) {
+	switch req.Format {
+	case FormatJSON:
+		return c.exportJSON(result, req)
+	case FormatCSV:
+		return c.exportCSV(result, req)
+	case FormatMarkdown:
+		return c.exportMarkdown(result, req)
+	default:
+		return nil, fmt.Errorf("unsupported export format: %s", req.Format)
+	}
+}
+
+// exportJSON exports results as JSON
+func (c *Client) exportJSON(result *ExtendedSearchResult, req ExportRequest) (*ExportResult, error) {
+	exportData := make(map[string]interface{})
+	
+	if len(req.Fields) > 0 {
+		// Export only specified fields
+		filteredIssues := make([]map[string]interface{}, len(result.Issues))
+		for i, issue := range result.Issues {
+			filteredIssue := make(map[string]interface{})
+			filteredIssue["key"] = issue.Key
+			
+			for _, field := range req.Fields {
+				filteredIssue[field] = c.getFieldValue(issue, field)
+			}
+			filteredIssues[i] = filteredIssue
+		}
+		exportData["issues"] = filteredIssues
+	} else {
+		exportData["issues"] = result.Issues
+	}
+	
+	exportData["total"] = result.Total
+	exportData["startAt"] = result.StartAt
+	exportData["maxResults"] = result.MaxResults
+	exportData["exportedAt"] = time.Now().Format(time.RFC3339)
+	
+	data, err := json.MarshalIndent(exportData, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+
+	return &ExportResult{
+		ContentType: "application/json",
+		Filename:    fmt.Sprintf("jira_search_results_%s.json", time.Now().Format("20060102_150405")),
+		Data:        data,
+		Size:        len(data),
+	}, nil
+}
+
+// exportCSV exports results as CSV
+func (c *Client) exportCSV(result *ExtendedSearchResult, req ExportRequest) (*ExportResult, error) {
+	var buf bytes.Buffer
+	writer := csv.NewWriter(&buf)
+
+	// Default fields if none specified
+	fields := req.Fields
+	if len(fields) == 0 {
+		fields = []string{"key", "summary", "status", "assignee", "priority", "created", "updated"}
+	}
+
+	// Write header
+	if err := writer.Write(fields); err != nil {
+		return nil, fmt.Errorf("failed to write CSV header: %w", err)
+	}
+
+	// Write data rows
+	for _, issue := range result.Issues {
+		row := make([]string, len(fields))
+
+		for i, field := range fields {
+			row[i] = c.getFieldValue(issue, field)
+		}
+
+		if err := writer.Write(row); err != nil {
+			return nil, fmt.Errorf("failed to write CSV row: %w", err)
+		}
+	}
+
+	writer.Flush()
+
+	if err := writer.Error(); err != nil {
+		return nil, fmt.Errorf("CSV writer error: %w", err)
+	}
+
+	return &ExportResult{
+		ContentType: "text/csv",
+		Filename:    fmt.Sprintf("jira_search_results_%s.csv", time.Now().Format("20060102_150405")),
+		Data:        buf.Bytes(),
+		Size:        buf.Len(),
+	}, nil
+}
+
+// exportMarkdown exports results as Markdown
+func (c *Client) exportMarkdown(result *ExtendedSearchResult, req ExportRequest) (*ExportResult, error) {
+	var buf strings.Builder
+
+	buf.WriteString("# Jira Search Results\n\n")
+	buf.WriteString(fmt.Sprintf("**Total Issues:** %d  \n", result.Total))
+	buf.WriteString(fmt.Sprintf("**Exported:** %s  \n\n", time.Now().Format("January 2, 2006 at 3:04 PM")))
+
+	// Default fields if none specified
+	fields := req.Fields
+	if len(fields) == 0 {
+		fields = []string{"key", "summary", "status", "assignee", "priority"}
+	}
+
+	// Write table header
+	buf.WriteString("| ")
+	for _, field := range fields {
+		buf.WriteString(strings.Title(field) + " | ")
+	}
+	buf.WriteString("\n")
+
+	// Write separator
+	buf.WriteString("| ")
+	for range fields {
+		buf.WriteString("--- | ")
+	}
+	buf.WriteString("\n")
+
+	// Write data rows
+	for _, issue := range result.Issues {
+		buf.WriteString("| ")
+		for _, field := range fields {
+			value := c.getFieldValue(issue, field)
+			// Escape markdown characters in cell content
+			value = strings.ReplaceAll(value, "|", "\\|")
+			value = strings.ReplaceAll(value, "\n", " ")
+			buf.WriteString(value + " | ")
+		}
+		buf.WriteString("\n")
+	}
+
+	buf.WriteString(fmt.Sprintf("\n---\n*Generated by GoJira on %s*\n", time.Now().Format("January 2, 2006")))
+
+	data := []byte(buf.String())
+
+	return &ExportResult{
+		ContentType: "text/markdown",
+		Filename:    fmt.Sprintf("jira_search_results_%s.md", time.Now().Format("20060102_150405")),
+		Data:        data,
+		Size:        len(data),
+	}, nil
+}
+
+// getFieldValue extracts a field value from an issue
+func (c *Client) getFieldValue(issue Issue, field string) string {
+	switch field {
+	case "key":
+		return issue.Key
+	case "id":
+		return issue.ID
+	case "summary":
+		return issue.Fields.Summary
+	case "description":
+		if desc, ok := issue.Fields.Description.(string); ok {
+			return desc
+		}
+		return ""
+	case "status":
+		if issue.Fields.Status != nil {
+			return issue.Fields.Status.Name
+		}
+		return ""
+	case "assignee":
+		if issue.Fields.Assignee != nil {
+			return issue.Fields.Assignee.DisplayName
+		}
+		return "Unassigned"
+	case "reporter":
+		if issue.Fields.Reporter != nil {
+			return issue.Fields.Reporter.DisplayName
+		}
+		return ""
+	case "priority":
+		if issue.Fields.Priority != nil {
+			return issue.Fields.Priority.Name
+		}
+		return ""
+	case "created":
+		if issue.Fields.Created != nil {
+			return issue.Fields.Created.Time.Format("2006-01-02 15:04:05")
+		}
+		return ""
+	case "updated":
+		if issue.Fields.Updated != nil {
+			return issue.Fields.Updated.Time.Format("2006-01-02 15:04:05")
+		}
+		return ""
+	case "resolved":
+		if issue.Fields.Resolved != nil {
+			return issue.Fields.Resolved.Time.Format("2006-01-02 15:04:05")
+		}
+		return ""
+	case "labels":
+		return strings.Join(issue.Fields.Labels, ", ")
+	case "components":
+		var compNames []string
+		for _, comp := range issue.Fields.Components {
+			compNames = append(compNames, comp.Name)
+		}
+		return strings.Join(compNames, ", ")
+	case "versions":
+		var verNames []string
+		for _, ver := range issue.Fields.Versions {
+			verNames = append(verNames, ver.Name)
+		}
+		return strings.Join(verNames, ", ")
+	case "fixVersions":
+		var fixVerNames []string
+		for _, ver := range issue.Fields.FixVersions {
+			fixVerNames = append(fixVerNames, ver.Name)
+		}
+		return strings.Join(fixVerNames, ", ")
+	case "project":
+		return issue.Fields.Project.Key
+	case "projectName":
+		return issue.Fields.Project.Name
+	case "issueType":
+		return issue.Fields.IssueType.Name
+	default:
+		return ""
+	}
+}
+
+// GetSupportedExportFormats returns all supported export formats
+func GetSupportedExportFormats() []ExportFormat {
+	return []ExportFormat{FormatJSON, FormatCSV, FormatMarkdown}
+}
+
+// ValidateExportRequest validates an export request
+func ValidateExportRequest(req ExportRequest) error {
+	supported := GetSupportedExportFormats()
+	for _, format := range supported {
+		if req.Format == format {
+			return nil
+		}
+	}
+	return fmt.Errorf("unsupported format '%s', supported formats: %v", req.Format, supported)
+}
