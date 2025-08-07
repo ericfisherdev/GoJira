@@ -67,6 +67,29 @@ func SetupRoutes(r *chi.Mux) {
 			r.Get("/{id}/search", handlers.SearchWithFilter)
 		})
 
+		// Sprint routes
+		r.Route("/sprints", func(r chi.Router) {
+			r.Get("/", handlers.GetSprints)
+			r.Post("/", handlers.CreateSprint)
+			r.Get("/{id}", handlers.GetSprint)
+			r.Put("/{id}", handlers.UpdateSprint)
+			r.Post("/{id}/start", handlers.StartSprint)
+			r.Post("/{id}/close", handlers.CloseSprint)
+			r.Get("/{id}/issues", handlers.GetSprintIssues)
+			r.Post("/{id}/issues", handlers.MoveIssuesToSprint)
+			r.Get("/{id}/report", handlers.GetSprintReport)
+		})
+
+		// Board routes
+		r.Route("/boards", func(r chi.Router) {
+			r.Get("/", handlers.GetBoards)
+			r.Get("/{id}", handlers.GetBoard)
+			r.Get("/{id}/configuration", handlers.GetBoardConfiguration)
+			r.Get("/{id}/issues", handlers.GetBoardIssues)
+			r.Get("/{id}/backlog", handlers.GetBoardBacklog)
+			r.Get("/{id}/sprints", handlers.GetBoardSprints)
+		})
+
 		// Claude-optimized routes
 		r.Route("/claude", func(r chi.Router) {
 			// Claude-formatted issue operations
