@@ -99,6 +99,26 @@ func SetupRoutes(r *chi.Mux) {
 			r.Get("/{id}/sprints", handlers.GetBoardSprints)
 		})
 
+		// Workflow routes
+		r.Route("/workflows", func(r chi.Router) {
+			r.Get("/", handlers.GetWorkflows)
+			r.Get("/{name}", handlers.GetWorkflow)
+			r.Get("/{name}/statemachine", handlers.GetWorkflowStateMachine)
+			r.Get("/{name}/analytics", handlers.GetWorkflowAnalytics)
+			
+			// Workflow scheme operations
+			r.Get("/schemes", handlers.GetWorkflowSchemes)
+			r.Get("/schemes/project/{projectKey}", handlers.GetProjectWorkflowScheme)
+		})
+
+		// Issue workflow operations
+		r.Route("/issues/{issueKey}/workflow", func(r chi.Router) {
+			r.Get("/", handlers.GetIssueWorkflow)
+			r.Get("/transitions", handlers.GetAvailableTransitions)
+			r.Get("/transitions/{transitionId}/validate", handlers.ValidateTransition)
+			r.Post("/transitions/{transitionId}/execute", handlers.ExecuteTransition)
+		})
+
 		// Claude-optimized routes
 		r.Route("/claude", func(r chi.Router) {
 			// Claude-formatted issue operations
