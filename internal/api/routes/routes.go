@@ -103,12 +103,21 @@ func SetupRoutes(r *chi.Mux) {
 		r.Route("/workflows", func(r chi.Router) {
 			r.Get("/", handlers.GetWorkflows)
 			r.Get("/{name}", handlers.GetWorkflow)
+			r.Get("/{name}/cached", handlers.GetCachedWorkflow)
 			r.Get("/{name}/statemachine", handlers.GetWorkflowStateMachine)
+			r.Get("/{name}/statemachine/advanced", handlers.GetWorkflowStateMachineAdvanced)
 			r.Get("/{name}/analytics", handlers.GetWorkflowAnalytics)
+			r.Get("/{name}/analytics/advanced", handlers.GetWorkflowAnalyticsAdvanced)
+			
+			// Metrics
+			r.Get("/metrics", handlers.GetWorkflowTransitionMetrics)
 			
 			// Workflow scheme operations
 			r.Get("/schemes", handlers.GetWorkflowSchemes)
 			r.Get("/schemes/project/{projectKey}", handlers.GetProjectWorkflowScheme)
+			
+			// Batch operations
+			r.Post("/validate/batch", handlers.BatchValidateTransitions)
 		})
 
 		// Issue workflow operations
@@ -116,7 +125,10 @@ func SetupRoutes(r *chi.Mux) {
 			r.Get("/", handlers.GetIssueWorkflow)
 			r.Get("/transitions", handlers.GetAvailableTransitions)
 			r.Get("/transitions/{transitionId}/validate", handlers.ValidateTransition)
+			r.Get("/transitions/{transitionId}/validate/advanced", handlers.ValidateWorkflowTransition)
 			r.Post("/transitions/{transitionId}/execute", handlers.ExecuteTransition)
+			r.Post("/transitions/{transitionId}/execute/advanced", handlers.ExecuteWorkflowTransition)
+			r.Post("/transitions/{transitionId}/simulate", handlers.SimulateWorkflowTransition)
 		})
 
 		// Claude-optimized routes
