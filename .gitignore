@@ -59,4 +59,4 @@ logs/
 /tmp/
 
 # configs with real info
-/configs/gojira.yaml
+configs/gojira.yaml
