@@ -1476,3 +1476,113 @@ func GetCommandSuggestions(w http.ResponseWriter, r *http.Request) {
 	render.Status(r, http.StatusOK)
 	render.JSON(w, r, response)
 }
+
+// CreateCommentRequest represents a request to create a comment
+type CreateCommentRequest struct {
+	Body       string                 `json:"body" validate:"required"`
+	Visibility map[string]interface{} `json:"visibility,omitempty"`
+}
+
+func (ccr *CreateCommentRequest) Bind(r *http.Request) error {
+	if ccr.Body == "" {
+		return fmt.Errorf("body is required")
+	}
+	return nil
+}
+
+// AddIssueComment adds a comment to an issue
+func AddIssueComment(w http.ResponseWriter, r *http.Request) {
+	if jiraClient == nil || !authManager.IsAuthenticated() {
+		render.Render(w, r, ErrUnauthorized(fmt.Errorf("not connected to Jira")))
+		return
+	}
+
+	issueKey := chi.URLParam(r, "key")
+	if issueKey == "" {
+		render.Render(w, r, ErrInvalidRequest(fmt.Errorf("missing issue key")))
+		return
+	}
+
+	var req CreateCommentRequest
+	if err := render.Bind(r, &req); err != nil {
+		render.Render(w, r, ErrInvalidRequest(err))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	commentReq := &jira.CreateCommentRequest{
+		Body:       req.Body,
+		Visibility: req.Visibility,
+	}
+
+	comment, err := jiraClient.AddComment(ctx, issueKey, commentReq)
+	if err != nil {
+		if strings.Contains(err.Error(), "404") {
+			render.Render(w, r, ErrNotFound(fmt.Sprintf("issue %s", issueKey)))
+		} else {
+			render.Render(w, r, ErrInternalServer(err))
+		}
+		return
+	}
+
+	response := &IssueResponse{
+		Success: true,
+		Data:    comment,
+	}
+
+	render.Status(r, http.StatusCreated)
+	render.Render(w, r, response)
+}
+
+// GetIssueComments retrieves comments for an issue
+func GetIssueComments(w http.ResponseWriter, r *http.Request) {
+	if jiraClient == nil || !authManager.IsAuthenticated() {
+		render.Render(w, r, ErrUnauthorized(fmt.Errorf("not connected to Jira")))
+		return
+	}
+
+	issueKey := chi.URLParam(r, "key")
+	if issueKey == "" {
+		render.Render(w, r, ErrInvalidRequest(fmt.Errorf("missing issue key")))
+		return
+	}
+
+	// Parse pagination parameters
+	startAt := 0
+	maxResults := 50
+
+	if startAtStr := r.URL.Query().Get("startAt"); startAtStr != "" {
+		if val, err := strconv.Atoi(startAtStr); err == nil && val >= 0 {
+			startAt = val
+		}
+	}
+
+	if maxResultsStr := r.URL.Query().Get("maxResults"); maxResultsStr != "" {
+		if val, err := strconv.Atoi(maxResultsStr); err == nil && val > 0 && val <= 1000 {
+			maxResults = val
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	comments, err := jiraClient.GetComments(ctx, issueKey, startAt, maxResults)
+	if err != nil {
+		if strings.Contains(err.Error(), "404") {
+			render.Render(w, r, ErrNotFound(fmt.Sprintf("issue %s", issueKey)))
+		} else {
+			render.Render(w, r, ErrInternalServer(err))
+		}
+		return
+	}
+
+	response := &IssueResponse{
+		Success: true,
+		Data:    comments,
+	}
+
+	render.Status(r, http.StatusOK)
+	render.Render(w, r, response)
+}
