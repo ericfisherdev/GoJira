@@ -6,6 +6,10 @@ import (
 )
 
 func SetupRoutes(r *chi.Mux) {
+	// Initialize handlers
+	queueHandler := handlers.NewQueueHandler()
+	nlpHandler := handlers.NewNLPHandler()
+	
 	// Health check routes
 	r.Get("/health", handlers.HealthCheck)
 	r.Get("/ready", handlers.ReadinessCheck)
@@ -67,6 +71,70 @@ func SetupRoutes(r *chi.Mux) {
 			r.Get("/{id}/search", handlers.SearchWithFilter)
 		})
 
+		// Sprint routes
+		r.Route("/sprints", func(r chi.Router) {
+			r.Get("/", handlers.GetSprints)
+			r.Post("/", handlers.CreateSprint)
+			r.Get("/active", handlers.GetActiveSprints)
+			r.Get("/upcoming", handlers.GetUpcomingSprints)
+			r.Get("/health", handlers.GetSprintHealthCheck)
+			r.Post("/validate", handlers.ValidateSprintRequest)
+			r.Get("/{id}", handlers.GetSprint)
+			r.Put("/{id}", handlers.UpdateSprint)
+			r.Post("/{id}/start", handlers.StartSprint)
+			r.Post("/{id}/auto-start", handlers.AutoStartSprint)
+			r.Post("/{id}/close", handlers.CloseSprint)
+			r.Post("/{id}/complete", handlers.CompleteSprintWithReport)
+			r.Get("/{id}/issues", handlers.GetSprintIssues)
+			r.Post("/{id}/issues", handlers.MoveIssuesToSprint)
+			r.Get("/{id}/report", handlers.GetSprintReport)
+			r.Get("/{id}/metrics", handlers.GetSprintMetrics)
+			r.Get("/{id}/predict", handlers.PredictSprintSuccess)
+			r.Post("/{id}/clone", handlers.CloneSprint)
+		})
+
+		// Board routes
+		r.Route("/boards", func(r chi.Router) {
+			r.Get("/", handlers.GetBoards)
+			r.Get("/{id}", handlers.GetBoard)
+			r.Get("/{id}/configuration", handlers.GetBoardConfiguration)
+			r.Get("/{id}/issues", handlers.GetBoardIssues)
+			r.Get("/{id}/backlog", handlers.GetBoardBacklog)
+			r.Get("/{id}/sprints", handlers.GetBoardSprints)
+		})
+
+		// Workflow routes
+		r.Route("/workflows", func(r chi.Router) {
+			r.Get("/", handlers.GetWorkflows)
+			r.Get("/{name}", handlers.GetWorkflow)
+			r.Get("/{name}/cached", handlers.GetCachedWorkflow)
+			r.Get("/{name}/statemachine", handlers.GetWorkflowStateMachine)
+			r.Get("/{name}/statemachine/advanced", handlers.GetWorkflowStateMachineAdvanced)
+			r.Get("/{name}/analytics", handlers.GetWorkflowAnalytics)
+			r.Get("/{name}/analytics/advanced", handlers.GetWorkflowAnalyticsAdvanced)
+			
+			// Metrics
+			r.Get("/metrics", handlers.GetWorkflowTransitionMetrics)
+			
+			// Workflow scheme operations
+			r.Get("/schemes", handlers.GetWorkflowSchemes)
+			r.Get("/schemes/project/{projectKey}", handlers.GetProjectWorkflowScheme)
+			
+			// Batch operations
+			r.Post("/validate/batch", handlers.BatchValidateTransitions)
+		})
+
+		// Issue workflow operations
+		r.Route("/issues/{issueKey}/workflow", func(r chi.Router) {
+			r.Get("/", handlers.GetIssueWorkflow)
+			r.Get("/transitions", handlers.GetAvailableTransitions)
+			r.Get("/transitions/{transitionId}/validate", handlers.ValidateTransition)
+			r.Get("/transitions/{transitionId}/validate/advanced", handlers.ValidateWorkflowTransition)
+			r.Post("/transitions/{transitionId}/execute", handlers.ExecuteTransition)
+			r.Post("/transitions/{transitionId}/execute/advanced", handlers.ExecuteWorkflowTransition)
+			r.Post("/transitions/{transitionId}/simulate", handlers.SimulateWorkflowTransition)
+		})
+
 		// Claude-optimized routes
 		r.Route("/claude", func(r chi.Router) {
 			// Claude-formatted issue operations
@@ -78,6 +146,33 @@ func SetupRoutes(r *chi.Mux) {
 			r.Post("/command", handlers.ProcessNaturalLanguageCommand)
 			r.Post("/jql", handlers.GenerateJQLFromNaturalLanguage)
 			r.Get("/suggestions", handlers.GetCommandSuggestions)
+		})
+
+		// Natural Language Processing routes
+		r.Route("/nlp", func(r chi.Router) {
+			r.Post("/parse", nlpHandler.ProcessNaturalLanguageCommand)
+			r.Post("/entities", nlpHandler.ExtractEntities)
+			r.Get("/suggestions", nlpHandler.GetCommandSuggestions)
+			r.Post("/suggestions", nlpHandler.GetCommandSuggestions)
+			r.Post("/validate", nlpHandler.ValidateCommand)
+			r.Get("/status", nlpHandler.GetParserStatus)
+			r.Post("/context", nlpHandler.UpdateContext)
+		})
+
+		// Queue management routes
+		r.Route("/queue", func(r chi.Router) {
+			r.Post("/jobs", queueHandler.SubmitJob)
+			r.Post("/jobs/batch", queueHandler.SubmitBatchJobs)
+			r.Get("/jobs/result", queueHandler.GetJobResult)
+			r.Delete("/jobs/{jobId}", queueHandler.RemoveJobFromQueue)
+			r.Get("/status", queueHandler.GetQueueStatus)
+			r.Get("/metrics", queueHandler.GetQueueMetrics)
+			r.Delete("/clear", queueHandler.ClearQueue)
+			r.Get("/priority", queueHandler.GetPriorityQueueStatus)
+			
+			// Rate limiter management
+			r.Get("/ratelimiter/stats", queueHandler.GetRateLimiterStats)
+			r.Post("/ratelimiter/reset", queueHandler.ResetRateLimiter)
 		})
 	})
 }

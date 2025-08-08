@@ -398,3 +398,29 @@ func (c *Client) GetProject(ctx context.Context, projectKey string) (*Project, e
 
 	return &project, nil
 }
+
+// HealthCheck performs a health check on the client connection
+func (c *Client) HealthCheck(ctx context.Context) error {
+	// Use a lightweight endpoint to check connectivity
+	resp, err := c.doRequest(ctx, "GET", "/rest/api/2/serverInfo", nil)
+	if err != nil {
+		return fmt.Errorf("health check failed - request error: %w", err)
+	}
+
+	if err := c.handleErrorResponse(resp); err != nil {
+		return fmt.Errorf("health check failed - server error: %w", err)
+	}
+
+	// Additional validation - ensure response has expected data
+	var serverInfo map[string]interface{}
+	if err := json.Unmarshal(resp.Body(), &serverInfo); err != nil {
+		return fmt.Errorf("health check failed - invalid response: %w", err)
+	}
+
+	// Check that we got some expected server info fields
+	if _, hasVersion := serverInfo["version"]; !hasVersion {
+		return fmt.Errorf("health check failed - missing version info")
+	}
+
+	return nil
+}
