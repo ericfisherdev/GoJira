@@ -1,0 +1,1535 @@
+openapi: 3.0.3
+info:
+  title: GoJira Phase 3 API
+  description: |
+    Advanced API endpoints for GoJira Phase 3 features including:
+    - Sprint Management with advanced lifecycle operations
+    - Workflow Operations with state management
+    - Bulk Operations for efficient mass updates
+    - Natural Language Processing integration with Claude Code
+    - Performance Optimization and Caching
+  version: 3.0.0
+  contact:
+    name: GoJira API Support
+    email: support@gojira.dev
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development server
+  - url: https://api.gojira.dev/v1
+    description: Production server
+
+security:
+  - ApiKeyAuth: []
+  - BearerAuth: []
+
+paths:
+  # Sprint Management Endpoints
+  /sprints:
+    get:
+      tags:
+        - Sprint Management
+      summary: List all sprints
+      description: Retrieve a list of all sprints with optional filtering
+      parameters:
+        - name: boardId
+          in: query
+          description: Filter sprints by board ID
+          schema:
+            type: string
+        - name: state
+          in: query
+          description: Filter sprints by state
+          schema:
+            type: string
+            enum: [FUTURE, ACTIVE, CLOSED]
+        - name: limit
+          in: query
+          description: Maximum number of sprints to return
+          schema:
+            type: integer
+            default: 50
+            maximum: 100
+        - name: offset
+          in: query
+          description: Number of sprints to skip
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Successfully retrieved sprints
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sprints:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Sprint'
+                  total:
+                    type: integer
+                  hasMore:
+                    type: boolean
+              example:
+                sprints:
+                  - id: "1"
+                    name: "Sprint 1"
+                    state: "ACTIVE"
+                    boardId: "10"
+                    startDate: "2024-01-01T00:00:00Z"
+                    endDate: "2024-01-14T23:59:59Z"
+                total: 25
+                hasMore: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags:
+        - Sprint Management
+      summary: Create a new sprint
+      description: Create a new sprint with specified parameters
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSprintRequest'
+            example:
+              name: "Phase 3 Development Sprint"
+              goal: "Implement advanced features"
+              boardId: "10"
+              startDate: "2024-02-01T09:00:00Z"
+              endDate: "2024-02-14T17:00:00Z"
+      responses:
+        '201':
+          description: Sprint created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sprint'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /sprints/{sprintId}:
+    get:
+      tags:
+        - Sprint Management
+      summary: Get sprint details
+      description: Retrieve detailed information about a specific sprint
+      parameters:
+        - name: sprintId
+          in: path
+          required: true
+          description: Unique identifier for the sprint
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successfully retrieved sprint details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SprintDetails'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags:
+        - Sprint Management
+      summary: Update sprint
+      description: Update sprint properties such as name, goal, or dates
+      parameters:
+        - name: sprintId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSprintRequest'
+      responses:
+        '200':
+          description: Sprint updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sprint'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags:
+        - Sprint Management
+      summary: Delete sprint
+      description: Delete a sprint (only if not started)
+      parameters:
+        - name: sprintId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Sprint deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /sprints/{sprintId}/start:
+    post:
+      tags:
+        - Sprint Management
+      summary: Start a sprint
+      description: Start a sprint and move it to ACTIVE state
+      parameters:
+        - name: sprintId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                startDate:
+                  type: string
+                  format: date-time
+                  description: Sprint start date (optional, defaults to now)
+                endDate:
+                  type: string
+                  format: date-time
+                  description: Sprint end date (optional, uses original end date)
+              example:
+                startDate: "2024-02-01T09:00:00Z"
+                endDate: "2024-02-14T17:00:00Z"
+      responses:
+        '200':
+          description: Sprint started successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sprint'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /sprints/{sprintId}/complete:
+    post:
+      tags:
+        - Sprint Management
+      summary: Complete a sprint
+      description: Complete an active sprint and move it to CLOSED state
+      parameters:
+        - name: sprintId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                moveIncompleteIssuesTo:
+                  type: string
+                  description: Sprint ID to move incomplete issues to
+                completionComment:
+                  type: string
+                  description: Optional completion comment
+              example:
+                moveIncompleteIssuesTo: "5"
+                completionComment: "Sprint completed with 85% story point completion"
+      responses:
+        '200':
+          description: Sprint completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SprintCompletion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /sprints/{sprintId}/report:
+    get:
+      tags:
+        - Sprint Management
+      summary: Get sprint report
+      description: Generate comprehensive sprint report with metrics and analytics
+      parameters:
+        - name: sprintId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: includeHistory
+          in: query
+          description: Include historical velocity data
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Sprint report generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SprintReport'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /sprints/{sprintId}/issues:
+    get:
+      tags:
+        - Sprint Management
+      summary: Get sprint issues
+      description: Retrieve all issues in a sprint with filtering options
+      parameters:
+        - name: sprintId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Filter by issue status
+          schema:
+            type: string
+        - name: assignee
+          in: query
+          description: Filter by assignee
+          schema:
+            type: string
+        - name: issueType
+          in: query
+          description: Filter by issue type
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successfully retrieved sprint issues
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  issues:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Issue'
+                  summary:
+                    $ref: '#/components/schemas/SprintIssueSummary'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # Workflow Operations Endpoints
+  /workflows:
+    get:
+      tags:
+        - Workflow Operations
+      summary: List available workflows
+      description: Get all available workflows for projects
+      parameters:
+        - name: projectKey
+          in: query
+          description: Filter workflows by project
+          schema:
+            type: string
+        - name: issueType
+          in: query
+          description: Filter workflows by issue type
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successfully retrieved workflows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Workflow'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /workflows/{workflowId}/transitions:
+    get:
+      tags:
+        - Workflow Operations
+      summary: Get workflow transitions
+      description: Retrieve all possible transitions for a workflow
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: fromStatus
+          in: query
+          description: Filter transitions from specific status
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successfully retrieved workflow transitions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkflowTransition'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /workflows/advanced/query:
+    post:
+      tags:
+        - Workflow Operations
+      summary: Advanced workflow query
+      description: Execute complex workflow-based queries using natural language or JQL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdvancedWorkflowQuery'
+            example:
+              query: "Find all issues in TODO state older than 7 days"
+              projectKey: "PROJ"
+              maxResults: 50
+              useNaturalLanguage: true
+      responses:
+        '200':
+          description: Query executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowQueryResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /workflows/transitions/bulk:
+    post:
+      tags:
+        - Workflow Operations
+      summary: Bulk workflow transitions
+      description: Execute transitions on multiple issues simultaneously
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkTransitionRequest'
+            example:
+              issueKeys: ["PROJ-1", "PROJ-2", "PROJ-3"]
+              transitionId: "21"
+              comment: "Moving to In Progress as part of sprint start"
+      responses:
+        '200':
+          description: Bulk transitions executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkOperationResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # Bulk Operations Endpoints
+  /bulk/update:
+    post:
+      tags:
+        - Bulk Operations
+      summary: Bulk update issues
+      description: Update multiple issues with the same field changes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkUpdateRequest'
+            example:
+              issueKeys: ["PROJ-1", "PROJ-2", "PROJ-3"]
+              update:
+                priority:
+                  name: "High"
+                assignee:
+                  accountId: "user123"
+                customfield_10001: "Updated value"
+      responses:
+        '200':
+          description: Bulk update completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkOperationResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /bulk/transition:
+    post:
+      tags:
+        - Bulk Operations
+      summary: Bulk transition issues
+      description: Transition multiple issues to a new status
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkTransitionRequest'
+      responses:
+        '200':
+          description: Bulk transition completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkOperationResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /bulk/create:
+    post:
+      tags:
+        - Bulk Operations
+      summary: Bulk create issues
+      description: Create multiple issues in a single operation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkCreateRequest'
+            example:
+              issues:
+                - project: {key: "PROJ"}
+                  issuetype: {name: "Task"}
+                  summary: "First task"
+                  priority: {name: "Medium"}
+                - project: {key: "PROJ"}
+                  issuetype: {name: "Bug"}
+                  summary: "Critical bug"
+                  priority: {name: "High"}
+      responses:
+        '201':
+          description: Bulk create completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkCreateResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # Natural Language Processing Endpoints
+  /claude/interpret:
+    post:
+      tags:
+        - Natural Language Processing
+      summary: Interpret natural language command
+      description: Process natural language commands and convert them to Jira operations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaudeInterpretRequest'
+            example:
+              command: "Create a critical bug for SQL injection in auth.go line 145"
+              context:
+                currentProject: "SECURITY"
+                currentUser: "john.doe@company.com"
+              sessionId: "session-123"
+      responses:
+        '200':
+          description: Command interpreted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaudeInterpretResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /claude/execute:
+    post:
+      tags:
+        - Natural Language Processing
+      summary: Execute interpreted command
+      description: Execute a previously interpreted natural language command
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaudeExecuteRequest'
+            example:
+              sessionId: "session-123"
+              actionId: "action-456"
+              confirmExecution: true
+              parameters:
+                priority: "Critical"
+      responses:
+        '200':
+          description: Command executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaudeExecuteResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /claude/suggestions:
+    post:
+      tags:
+        - Natural Language Processing
+      summary: Get command suggestions
+      description: Get suggestions for completing or improving a natural language command
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                partialCommand:
+                  type: string
+                  description: Partial or incomplete command
+                context:
+                  $ref: '#/components/schemas/ClaudeContext'
+              example:
+                partialCommand: "Create a bug"
+                context:
+                  currentProject: "PROJ"
+      responses:
+        '200':
+          description: Suggestions generated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  suggestions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        command:
+                          type: string
+                        description:
+                          type: string
+                        confidence:
+                          type: number
+                          format: float
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /claude/sessions/{sessionId}:
+    get:
+      tags:
+        - Natural Language Processing
+      summary: Get session history
+      description: Retrieve conversation history for a Claude session
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum number of history entries to return
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Session history retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaudeSessionHistory'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags:
+        - Natural Language Processing
+      summary: Clear session history
+      description: Clear conversation history for a Claude session
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Session history cleared successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # Performance and Monitoring Endpoints
+  /performance/metrics:
+    get:
+      tags:
+        - Performance & Monitoring
+      summary: Get performance metrics
+      description: Retrieve comprehensive performance metrics and statistics
+      parameters:
+        - name: timeframe
+          in: query
+          description: Time frame for metrics (1h, 24h, 7d, 30d)
+          schema:
+            type: string
+            default: "1h"
+        - name: operations
+          in: query
+          description: Specific operations to include (comma-separated)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Performance metrics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceMetrics'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /performance/cache:
+    get:
+      tags:
+        - Performance & Monitoring
+      summary: Get cache statistics
+      description: Retrieve cache performance statistics and configuration
+      responses:
+        '200':
+          description: Cache statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CacheStatistics'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags:
+        - Performance & Monitoring
+      summary: Clear cache
+      description: Clear all cached data (use with caution)
+      parameters:
+        - name: pattern
+          in: query
+          description: Cache key pattern to clear (optional)
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Cache cleared successfully
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    BearerAuth:
+      type: http
+      scheme: bearer
+
+  schemas:
+    # Sprint Management Schemas
+    Sprint:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        state:
+          type: string
+          enum: [FUTURE, ACTIVE, CLOSED]
+        boardId:
+          type: string
+        goal:
+          type: string
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        createdDate:
+          type: string
+          format: date-time
+        completeDate:
+          type: string
+          format: date-time
+          nullable: true
+
+    SprintDetails:
+      allOf:
+        - $ref: '#/components/schemas/Sprint'
+        - type: object
+          properties:
+            issues:
+              type: array
+              items:
+                $ref: '#/components/schemas/Issue'
+            velocity:
+              $ref: '#/components/schemas/SprintVelocity'
+
+    SprintVelocity:
+      type: object
+      properties:
+        committedStoryPoints:
+          type: number
+        completedStoryPoints:
+          type: number
+        committedIssues:
+          type: integer
+        completedIssues:
+          type: integer
+        velocityTrend:
+          type: array
+          items:
+            type: object
+            properties:
+              sprintName:
+                type: string
+              storyPoints:
+                type: number
+
+    CreateSprintRequest:
+      type: object
+      required:
+        - name
+        - boardId
+      properties:
+        name:
+          type: string
+        goal:
+          type: string
+        boardId:
+          type: string
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+
+    UpdateSprintRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        goal:
+          type: string
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+
+    SprintCompletion:
+      type: object
+      properties:
+        sprintId:
+          type: string
+        completedDate:
+          type: string
+          format: date-time
+        completedIssues:
+          type: integer
+        incompleteIssues:
+          type: integer
+        movedIssues:
+          type: array
+          items:
+            type: object
+            properties:
+              issueKey:
+                type: string
+              movedToSprint:
+                type: string
+
+    SprintReport:
+      type: object
+      properties:
+        summary:
+          $ref: '#/components/schemas/SprintSummary'
+        completedIssues:
+          type: array
+          items:
+            $ref: '#/components/schemas/Issue'
+        incompleteIssues:
+          type: array
+          items:
+            $ref: '#/components/schemas/Issue'
+        velocity:
+          $ref: '#/components/schemas/SprintVelocity'
+        burndown:
+          $ref: '#/components/schemas/BurndownData'
+
+    SprintSummary:
+      type: object
+      properties:
+        totalIssues:
+          type: integer
+        completedIssues:
+          type: integer
+        totalStoryPoints:
+          type: number
+        completedStoryPoints:
+          type: number
+        completionPercentage:
+          type: number
+        averageCompletionTime:
+          type: string
+
+    SprintIssueSummary:
+      type: object
+      properties:
+        total:
+          type: integer
+        byStatus:
+          type: object
+          additionalProperties:
+            type: integer
+        byType:
+          type: object
+          additionalProperties:
+            type: integer
+        byPriority:
+          type: object
+          additionalProperties:
+            type: integer
+
+    BurndownData:
+      type: object
+      properties:
+        ideal:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              remaining:
+                type: number
+        actual:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              remaining:
+                type: number
+
+    # Workflow Schemas
+    Workflow:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        projectKey:
+          type: string
+        issueTypes:
+          type: array
+          items:
+            type: string
+        statuses:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowStatus'
+
+    WorkflowStatus:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+          enum: [TODO, IN_PROGRESS, DONE]
+
+    WorkflowTransition:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        from:
+          $ref: '#/components/schemas/WorkflowStatus'
+        to:
+          $ref: '#/components/schemas/WorkflowStatus'
+        conditions:
+          type: array
+          items:
+            type: string
+        validators:
+          type: array
+          items:
+            type: string
+
+    AdvancedWorkflowQuery:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          description: Natural language query or JQL
+        projectKey:
+          type: string
+        maxResults:
+          type: integer
+          default: 50
+        useNaturalLanguage:
+          type: boolean
+          default: true
+        includeSubtasks:
+          type: boolean
+          default: false
+
+    WorkflowQueryResult:
+      type: object
+      properties:
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/Issue'
+        total:
+          type: integer
+        jql:
+          type: string
+          description: Generated JQL query
+        executionTime:
+          type: number
+          description: Query execution time in milliseconds
+
+    # Bulk Operations Schemas
+    BulkUpdateRequest:
+      type: object
+      required:
+        - issueKeys
+        - update
+      properties:
+        issueKeys:
+          type: array
+          items:
+            type: string
+        update:
+          type: object
+          description: Fields to update
+        notifyUsers:
+          type: boolean
+          default: true
+        comment:
+          type: string
+
+    BulkTransitionRequest:
+      type: object
+      required:
+        - issueKeys
+        - transitionId
+      properties:
+        issueKeys:
+          type: array
+          items:
+            type: string
+        transitionId:
+          type: string
+        comment:
+          type: string
+        fields:
+          type: object
+          description: Additional fields to update during transition
+
+    BulkCreateRequest:
+      type: object
+      required:
+        - issues
+      properties:
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreateIssueRequest'
+
+    BulkOperationResult:
+      type: object
+      properties:
+        successful:
+          type: integer
+        failed:
+          type: integer
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              issueKey:
+                type: string
+              status:
+                type: string
+                enum: [SUCCESS, FAILED]
+              error:
+                type: string
+                nullable: true
+        executionTime:
+          type: number
+          description: Total execution time in milliseconds
+
+    BulkCreateResult:
+      allOf:
+        - $ref: '#/components/schemas/BulkOperationResult'
+        - type: object
+          properties:
+            createdIssues:
+              type: array
+              items:
+                $ref: '#/components/schemas/Issue'
+
+    # Claude NLP Schemas
+    ClaudeInterpretRequest:
+      type: object
+      required:
+        - command
+      properties:
+        command:
+          type: string
+          description: Natural language command to interpret
+        context:
+          $ref: '#/components/schemas/ClaudeContext'
+        sessionId:
+          type: string
+          description: Session identifier for conversation context
+
+    ClaudeInterpretResponse:
+      type: object
+      properties:
+        understood:
+          type: boolean
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        action:
+          $ref: '#/components/schemas/ClaudeAction'
+        clarification:
+          type: string
+          nullable: true
+        suggestions:
+          type: array
+          items:
+            type: string
+        sessionId:
+          type: string
+        processingTime:
+          type: number
+          description: Processing time in milliseconds
+
+    ClaudeAction:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [CREATE_ISSUE, UPDATE_ISSUE, SEARCH_ISSUES, BULK_UPDATE, BULK_TRANSITION, START_SPRINT, ADD_COMMENT, TRANSITION_ISSUE, CLARIFICATION_NEEDED]
+        parameters:
+          type: object
+          description: Parameters for the action
+        id:
+          type: string
+          description: Unique action identifier
+        requiresConfirmation:
+          type: boolean
+          default: false
+
+    ClaudeContext:
+      type: object
+      properties:
+        currentProject:
+          type: string
+        currentUser:
+          type: string
+        currentSprint:
+          type: string
+        recentIssues:
+          type: array
+          items:
+            type: string
+        preferences:
+          type: object
+
+    ClaudeExecuteRequest:
+      type: object
+      required:
+        - actionId
+        - sessionId
+      properties:
+        sessionId:
+          type: string
+        actionId:
+          type: string
+        confirmExecution:
+          type: boolean
+          default: true
+        parameters:
+          type: object
+          description: Additional or modified parameters
+
+    ClaudeExecuteResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        result:
+          type: object
+          description: Execution result (issue, search results, etc.)
+        executionTime:
+          type: number
+        followUpActions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClaudeAction'
+
+    ClaudeSessionHistory:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        entries:
+          type: array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: string
+                format: date-time
+              command:
+                type: string
+              action:
+                $ref: '#/components/schemas/ClaudeAction'
+              result:
+                type: object
+        totalEntries:
+          type: integer
+
+    # Performance Schemas
+    PerformanceMetrics:
+      type: object
+      properties:
+        timeframe:
+          type: string
+        summary:
+          type: object
+          properties:
+            totalOperations:
+              type: integer
+            averageResponseTime:
+              type: number
+            errorRate:
+              type: number
+            throughput:
+              type: number
+        operations:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              count:
+                type: integer
+              avgTime:
+                type: number
+              minTime:
+                type: number
+              maxTime:
+                type: number
+              p95Time:
+                type: number
+              p99Time:
+                type: number
+              errorCount:
+                type: integer
+        systemMetrics:
+          type: object
+          properties:
+            memoryUsage:
+              type: number
+            cpuUsage:
+              type: number
+            activeConnections:
+              type: integer
+
+    CacheStatistics:
+      type: object
+      properties:
+        levels:
+          type: object
+          properties:
+            l1:
+              $ref: '#/components/schemas/CacheLevelStats'
+            l2:
+              $ref: '#/components/schemas/CacheLevelStats'
+            l3:
+              $ref: '#/components/schemas/CacheLevelStats'
+        overall:
+          type: object
+          properties:
+            hitRatio:
+              type: number
+              format: float
+            totalRequests:
+              type: integer
+            totalHits:
+              type: integer
+            totalMisses:
+              type: integer
+
+    CacheLevelStats:
+      type: object
+      properties:
+        hitRatio:
+          type: number
+          format: float
+        size:
+          type: integer
+        maxSize:
+          type: integer
+        evictions:
+          type: integer
+        avgAccessTime:
+          type: number
+
+    # Common Schemas
+    Issue:
+      type: object
+      properties:
+        id:
+          type: string
+        key:
+          type: string
+        self:
+          type: string
+        fields:
+          type: object
+          properties:
+            summary:
+              type: string
+            description:
+              type: string
+            issuetype:
+              type: object
+              properties:
+                name:
+                  type: string
+                iconUrl:
+                  type: string
+            priority:
+              type: object
+              properties:
+                name:
+                  type: string
+                iconUrl:
+                  type: string
+            status:
+              type: object
+              properties:
+                name:
+                  type: string
+                statusCategory:
+                  type: object
+                  properties:
+                    key:
+                      type: string
+            assignee:
+              type: object
+              properties:
+                displayName:
+                  type: string
+                accountId:
+                  type: string
+              nullable: true
+            created:
+              type: string
+              format: date-time
+            updated:
+              type: string
+              format: date-time
+
+    CreateIssueRequest:
+      type: object
+      required:
+        - project
+        - issuetype
+        - summary
+      properties:
+        project:
+          type: object
+          properties:
+            key:
+              type: string
+        issuetype:
+          type: object
+          properties:
+            name:
+              type: string
+        summary:
+          type: string
+        description:
+          type: string
+        priority:
+          type: object
+          properties:
+            name:
+              type: string
+        assignee:
+          type: object
+          properties:
+            accountId:
+              type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        code:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
+        requestId:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "INVALID_REQUEST"
+            message: "The request contains invalid parameters"
+            code: 400
+            timestamp: "2024-01-01T12:00:00Z"
+            requestId: "req-123456"
+
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "UNAUTHORIZED"
+            message: "Valid authentication credentials are required"
+            code: 401
+            timestamp: "2024-01-01T12:00:00Z"
+            requestId: "req-123457"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "RESOURCE_NOT_FOUND"
+            message: "The requested resource could not be found"
+            code: 404
+            timestamp: "2024-01-01T12:00:00Z"
+            requestId: "req-123458"
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "INTERNAL_SERVER_ERROR"
+            message: "An unexpected error occurred"
+            code: 500
+            timestamp: "2024-01-01T12:00:00Z"
+            requestId: "req-123459"
