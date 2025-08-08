@@ -176,12 +176,10 @@ When working on complex tasks, use GoJira to create and track Jira issues:
 curl -X POST http://localhost:8080/api/v1/issues \
   -H "Content-Type: application/json" \
   -d '{
-    "fields": {
-      "project": {"key": "YOUR_PROJECT_KEY"},
-      "summary": "Task description",
-      "description": "Detailed task information",
-      "issuetype": {"name": "Task"}
-    }
+    "project": "YOUR_PROJECT_KEY",
+    "summary": "Task description",
+    "description": "Detailed task information",
+    "issueType": "Task"
   }'
 
 # Update issue with progress
