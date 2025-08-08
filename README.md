@@ -96,6 +96,41 @@ GoJira acts as an intelligent middleware between Claude Code and Jira's REST API
 - `GET /api/v1/sprints/{id}/predict` - Predict sprint success
 - `POST /api/v1/sprints/{id}/clone` - Clone sprint
 
+#### Sprint Creation Examples
+
+**Create basic sprint** (name must be ≤30 characters):
+```bash
+curl -X POST http://localhost:8080/api/v1/sprints \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Sprint 1: Core Features",
+    "goal": "Implement user authentication and basic CRUD operations",
+    "originBoardId": 100
+  }'
+```
+
+**Create sprint with dates**:
+```bash
+curl -X POST http://localhost:8080/api/v1/sprints \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Sprint 2: API Enhancement",
+    "goal": "Add advanced search and filtering capabilities",
+    "originBoardId": 100,
+    "startDate": "2025-08-10T09:00:00Z",
+    "endDate": "2025-08-24T17:00:00Z"
+  }'
+```
+
+**Move issues to sprint**:
+```bash
+curl -X POST http://localhost:8080/api/v1/sprints/123/issues \
+  -H "Content-Type: application/json" \
+  -d '{
+    "issues": ["PROJ-1", "PROJ-2", "PROJ-3"]
+  }'
+```
+
 ### Board Operations
 - `GET /api/v1/boards` - List all boards
 - `GET /api/v1/boards/{id}` - Get board details
@@ -474,6 +509,25 @@ curl http://localhost:8080/api/v1/auth/status
 - Ensure server host is set to `0.0.0.0` instead of `localhost`
 - Use WSL IP address instead of localhost from other instances
 - Check Windows firewall settings
+
+**Sprint Creation Errors**
+- **Sprint name too long**: Maximum 30 characters allowed
+  ```bash
+  # ❌ This will fail (40 characters)
+  "Sprint 1: Core Companion Intelligence"
+  
+  # ✅ Use shorter name (26 characters)
+  "Sprint 1: Core Features"
+  ```
+- **Missing originBoardId**: Board ID is required for sprint creation
+- **Invalid dates**: Start date must be before end date, duration 7-30 days
+- **Board not found**: Verify board ID exists with `GET /api/v1/boards`
+
+**Task Assignment to Sprints**
+- Use issue keys in array format: `["PROJ-1", "PROJ-2"]`
+- Ensure issues exist before assigning to sprint
+- Sprint must be in correct state to accept issues
+- Check issue permissions for sprint assignment
 
 **Performance Issues**
 - Enable caching in configuration
