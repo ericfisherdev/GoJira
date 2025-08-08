@@ -40,8 +40,14 @@ func SetupRoutes(r *chi.Mux) {
 			// Issue operations
 			r.Get("/{key}/transitions", handlers.GetIssueTransitions)
 			r.Post("/{key}/transitions", handlers.TransitionIssue)
+			r.Post("/{key}/transition", handlers.TransitionIssue) // Support both singular and plural
 			r.Get("/{key}/links", handlers.GetIssueLinks)
 			r.Get("/{key}/customfields", handlers.GetCustomFields)
+			
+			// Comments
+			r.Get("/{key}/comments", handlers.GetIssueComments)
+			r.Post("/{key}/comments", handlers.AddIssueComment)
+			r.Post("/{key}/comment", handlers.AddIssueComment) // Support both singular and plural
 			
 			// Issue linking
 			r.Post("/link", handlers.CreateIssueLink)
@@ -119,6 +125,11 @@ func SetupRoutes(r *chi.Mux) {
 			// Workflow scheme operations
 			r.Get("/schemes", handlers.GetWorkflowSchemes)
 			r.Get("/schemes/project/{projectKey}", handlers.GetProjectWorkflowScheme)
+			
+			// Project transitions lookup
+			r.Get("/transitions/project/{projectKey}", handlers.GetProjectTransitions)
+			r.Post("/transitions/project", handlers.GetProjectTransitions)
+			r.Get("/transitions/board/{boardId}", handlers.GetProjectTransitions)
 			
 			// Batch operations
 			r.Post("/validate/batch", handlers.BatchValidateTransitions)
